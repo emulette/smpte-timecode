@@ -1,0 +1,10 @@
+[package]
+name = "smpte-timecode-package-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+smpte-timecode = { version = "=0.1.0", path = "../../target/package/smpte-timecode-0.1.0" }
+
+[workspace]

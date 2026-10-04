@@ -1,0 +1,101 @@
+# smpte-timecode
+
+> SMPTE timecode arithmetic with exact drop-frame handling, and a MIDI Time Code decoder and
+> encoder. `no_std`, no allocation, no dependencies, MSRV 1.85. Every public item is re-exported
+> at the crate root: `use smpte_timecode::{...}`.
+
+## Frame rates
+
+- `FrameRate` is one of 19 rates: `FPS_23_976`, `FPS_24`, `FPS_25`, `FPS_29_97`, `FPS_29_97_DF`,
+  `FPS_30`, `FPS_30_DF`, `FPS_47_952`, `FPS_48`, `FPS_50`, `FPS_59_94`, `FPS_59_94_DF`, `FPS_60`,
+  `FPS_60_DF`, `FPS_100`, `FPS_119_88`, `FPS_119_88_DF`, `FPS_120`, `FPS_120_DF`. `FrameRate::ALL`
+  lists them.
+- `FrameRate::new(nominal: u8, ntsc: bool, drop_frame: bool)` looks one up; any other combination
+  is `TimecodeError::UnsupportedFrameRate`.
+- `nominal()` is the label count per second (24, 25, 30, 48, 50, 60, 100 or 120). `is_ntsc()`
+  means frames run at 1000/1001 of nominal. `frames_per_second()` returns the exact `Ratio`.
+  `frames_per_day()` counts the frames from midnight to midnight.
+- Drop-frame rates (nominal 30, 60, 120) skip nominal/15 labels (2, 4, 8) at the start of each
+  minute not divisible by ten. 29.97 DF and 59.94 DF are SMPTE ST 12-1. 30, 60, 119.88 and 120 DF
+  follow the same rule as Pro Tools labels them.
+
+## Timecode
+
+- `Timecode` is a frame count from `00:00:00:00` within one day plus its `FrameRate`. It is `Copy`
+  and `Eq`. Equality compares both the frame and the rate.
+- Construction: `from_frames(u32, rate)` (`FrameOutOfRange` at or past `frames_per_day`),
+  `from_fields(Fields, rate)`, `parse(&str, rate)`, `from_seconds(Ratio, rate, Rounding)`,
+  `from_samples(u64, sample_rate: Ratio, rate, Rounding)`.
+- `parse` accepts exactly `HH:MM:SS:FF` or, for drop-frame rates only, `HH:MM:SS;FF`. Hours,
+  minutes and seconds have two digits; frames two or three. No surrounding whitespace. Drop-frame
+  rates also accept `:`. Errors: `InvalidSyntax`, `DropFrameSeparator` (`;` at a non-drop rate),
+  `FieldOutOfRange` (hours > 23, minutes or seconds > 59, frames >= nominal), `DroppedLabel`
+  (for example `00:01:00;00` at 29.97 DF).
+- `Display` writes `HH:MM:SS:FF`, with `;` before the frames at drop-frame rates, and at least two
+  frame digits.
+- `frames()`, `rate()`, `fields() -> Fields { hours, minutes, seconds, frames }` (all `u8`).
+- `wrapping_add_frames(i64)` moves forward or backward and wraps at midnight for any `i64`.
+- `to_seconds() -> Ratio` is exact. `to_samples(sample_rate: Ratio, Rounding) -> Result<u64>`
+  rounds once at the end; `Overflow` if the sample does not fit `u64`.
+- Converting from seconds or samples rounds to a frame with the given `Rounding`; errors are
+  `ZeroSampleRate`, `Overflow` (128-bit intermediate) and `FrameOutOfRange` (past the day).
+- With at least one sample per frame, `to_samples` with `Down` then `from_samples` with `Up`
+  returns the original position, as do `Up`/`Down` and `Nearest`/`Nearest`.
+
+## Ratio, Rounding, Pull
+
+- `Ratio` is an exact non-negative rational in lowest terms with `u64` parts: `new(numer, denom)`
+  (`ZeroDenominator` for 0), `from_integer`, `numer()`, `denom()`, `checked_mul -> Option`,
+  `to_f64()` for display only, and total ordering by value.
+- `Rounding::{Down, Up, Nearest}`. `Nearest` rounds exact halves up.
+- `Pull` is an exact factor: `NONE`, `UP_0_1_PERCENT` (1001/1000), `DOWN_0_1_PERCENT`
+  (1000/1001), `UP_4_PERCENT` (25/24), `DOWN_4_PERCENT` (24/25). `then(next) -> Option<Pull>`
+  composes, `apply(Ratio) -> Option<Ratio>` multiplies a frame or sample rate, `factor()` exposes
+  the ratio. `None` means the result does not fit `u64` parts.
+
+## MIDI Time Code decoder
+
+- `MtcDecoder::new()` (also `Default`), `with_quarter_frame_timeout(Duration)` (default 500 ms),
+  `with_stale_after(Duration)` (default 1 s).
+- `feed(&mut self, message: &[u8], at: Duration) -> Result<Option<MtcEvent>, MtcError>` takes one
+  complete MIDI message and the time it arrived as a duration since any fixed instant. Use one
+  clock per decoder. The decoder never reads a clock, allocates or blocks.
+- Quarter frame `F1 0nnndddd`: a piece continues the cycle when it is one step after (forward) or
+  before (reverse) the previous piece, modulo 8, within the timeout and in the same direction.
+  Otherwise the cycle restarts at this piece. A position is produced when piece 7 (forward) or 0
+  (reverse) completes eight collected pieces. Forward positions add two frames (RFC 6295 B.4) and
+  wrap at midnight; reverse positions are as encoded. Reserved bits are masked.
+- Full frame `F0 7F <device> 01 01 0rrhhhhh 00mmmmmm 00ssssss 000fffff F7`: any device ID; clears
+  the quarter-frame cycle; produces a `Motion::Located` position without offset.
+- Any other message, including user bits `F0 7F <device> 01 02 ...`, returns `Ok(None)` and leaves
+  the state unchanged.
+- Errors: `MtcError::MalformedMessage` (quarter frame not exactly two bytes or data byte >= 0x80;
+  full frame not exactly ten bytes ending in F7, or a data byte >= 0x80) and
+  `MtcError::InvalidTimecode(TimecodeError)` for a complete position that does not exist. The
+  malformed message discards the partial cycle; an invalid complete position consumes the cycle.
+  Neither error replaces or refreshes the last valid position.
+- `MtcEvent { timecode: Timecode, motion: Motion, at: Duration }`.
+  `Motion::{Forward, Reverse, Located}`.
+- Rate codes: 0 → `FPS_24`, 1 → `FPS_25`, 2 → `FPS_29_97_DF`, 3 → `FPS_30`.
+  `set_rate_hint(Option<FrameRate>)`: while the hint has the same `nominal()` as the code's rate,
+  positions use the hint (recovers 23.976, 29.97 and 30 DF); otherwise the code's rate wins.
+- `lock_state(now: Duration) -> LockState`: `Unlocked` before any position or after `reset()`;
+  `Stale` when `now - at` of the last position exceeds the stale limit; otherwise
+  `Locked(Motion)` of the last position.
+- `reset()` clears the cycle and the last position, keeping limits and the rate hint.
+
+## MIDI Time Code encoder
+
+- `MtcEncoder::new(start: Timecode, Direction::{Forward, Reverse})`; rates with nominal 48 or more
+  are `MtcError::NoRateCode`. Rate codes: nominal 24 → 0, 25 → 1, 30 drop-frame → 2, 30 → 3.
+- `MtcEncoder` is an endless `Iterator<Item = [u8; 2]>` of quarter frames. Forward sends pieces
+  0..=7 then advances two frames; reverse sends 7..=0 then moves back two frames; both wrap at
+  midnight. `timecode()` is the position the current cycle carries.
+- `quarter_frame_interval() -> Ratio` is the exact seconds between messages (a quarter frame).
+  The caller times and sends the messages.
+- `MtcEncoder::full_frame(Timecode) -> Result<[u8; 10], MtcError>` addresses device 0x7F.
+
+## Not included
+
+Subframes, LTC/VITC, MIDI port I/O, raw byte-stream SysEx assembly, user bits, MIDI Machine Control,
+MIDI Cueing, speed estimation and freewheeling.

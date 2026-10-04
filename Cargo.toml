@@ -1,0 +1,27 @@
+[package]
+name = "smpte-timecode"
+description = "SMPTE timecode arithmetic with exact drop-frame handling, and a MIDI Time Code decoder and encoder"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/emulette/smpte-timecode"
+documentation = "https://docs.rs/smpte-timecode"
+include = ["/src/**", "/Cargo.toml", "/README.md", "/CHANGELOG.md", "/LICENSE-MIT", "/LICENSE-APACHE"]
+keywords = ["timecode", "smpte", "mtc", "midi", "drop-frame"]
+categories = ["multimedia::audio", "multimedia::video", "no-std::no-alloc"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+dbg_macro = "deny"
+print_stderr = "deny"
+print_stdout = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[dev-dependencies]
+proptest = { version = "1.11", default-features = false, features = ["std"] }
+talw-timecode = "=0.1.0"
