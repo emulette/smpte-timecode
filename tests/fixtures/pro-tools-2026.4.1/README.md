@@ -41,15 +41,19 @@ within the timeout. The decoder discards that ambiguous first cycle and resumes 
 the next complete forward cycle. The original transition pieces are retained.
 
 For 48, 50, 59.94 and 60 fps sessions, Pro Tools sends half-count MTC with codes
-0, 1, 3 and 3 respectively. The decoder follows the received 24/25/30 fps rate when
-the session hint has a different nominal count. A 59.94 hint therefore does not
-restore a 29.97 stream rate. Lower-rate captures cover 23.976, 24, 25, 29.97 NDF/DF,
-30 and 30 DF.
+0, 1, 3 and 3 respectively. Its quarter frames in the 59.94 session arrive at
+29.970 frames per second, and at 30.000 in the 60 session. With the session rate as
+the hint, the decoder reads them at the half rate with the session's 1000/1001
+factor: 24, 25, 29.97 and 30. Lower-rate captures cover 23.976, 24, 25, 29.97
+NDF/DF, 30 and 30 DF.
 
 ## Verification limits
 
 These fixtures verify byte/position compatibility and the recorded transport transitions.
 They do not independently measure physical latency, scheduling accuracy or audio/video
 alignment. Reverse transport, midnight/ten-minute boundaries, other Pro Tools versions,
-external MIDI hardware and the remaining session rates were not captured. No full-frame
-SysEx was observed in these recordings; synthetic codec tests cover full frames.
+external MIDI hardware and the remaining session rates were not captured. In particular
+47.952, 59.94 DF and 60 DF sessions were not captured, so their rate codes are not
+confirmed; the decoder's half-count reading of them follows the 48, 59.94 and 60
+captures and is covered by synthetic tests only. No full-frame SysEx was observed in
+these recordings; synthetic codec tests cover full frames.

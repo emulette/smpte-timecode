@@ -2,7 +2,8 @@
 //!
 //! Rate codes map as 0 → 24, 1 → 25, 2 → 29.97 DF and 3 → 30. The encoder sends 23.976 as code 0,
 //! 30 DF as code 2 and 29.97 as code 3, because those rates have no code of their own. The
-//! decoder recovers them through [`MtcDecoder::set_rate_hint`].
+//! decoder recovers them through [`MtcDecoder::set_rate_hint`], which also reads the half-count
+//! MTC of sessions at 48 frames per second and faster at the half rate, such as 59.94 as 29.97.
 
 mod decoder;
 mod encoder;

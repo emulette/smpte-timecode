@@ -308,7 +308,7 @@ const TRANSPORT_CAPTURES: &[TransportCapture] = &[
         name: "59.94",
         data: include_str!("fixtures/pro-tools-2026.4.1/59.94-transport.txt"),
         session_rate: FrameRate::FPS_59_94,
-        decoded_rate: FrameRate::FPS_30,
+        decoded_rate: FrameRate::FPS_29_97,
         messages: 618,
         runs: &[
             RecordedRun {
@@ -416,6 +416,33 @@ fn pro_tools_session_rate_matrix_decodes_minute_boundary_restart_and_live_jump()
             decoder.lock_state(stopped_at + Duration::from_secs(2)),
             LockState::Stale
         );
+    }
+}
+
+#[test]
+fn pro_tools_positions_advance_with_the_recorded_time() {
+    // A position read at the wrong rate drifts 0.1% from the recording, 2.8 ms over the longest
+    // runs; the timestamps keep their pace far closer than that.
+    for recording in TRANSPORT_CAPTURES {
+        let mut decoder = MtcDecoder::new();
+        decoder.set_rate_hint(Some(recording.session_rate));
+        let events: Vec<_> = capture(recording.data)
+            .iter()
+            .filter_map(|(at, bytes)| decoder.feed(bytes, *at).unwrap())
+            .collect();
+        // Consecutive forward cycles advance two frames.
+        let runs = events.chunk_by(|a, b| b.timecode.frames() == a.timecode.frames() + 2);
+        for run in runs.filter(|run| run.len() >= 20) {
+            let (first, last) = (run[0], run[run.len() - 1]);
+            let positions =
+                last.timecode.to_seconds().to_f64() - first.timecode.to_seconds().to_f64();
+            let recorded = (last.at - first.at).as_secs_f64();
+            assert!(
+                (positions - recorded).abs() < 0.000_5,
+                "{}: positions advanced {positions} s in {recorded} s",
+                recording.name
+            );
+        }
     }
 }
 

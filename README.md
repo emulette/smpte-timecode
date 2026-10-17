@@ -61,7 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 - MIDI Time Code rate codes name only 24, 25, 29.97 DF and 30. The encoder sends 23.976 as 24,
   29.97 as 30 and 30 DF as 29.97 DF, and cannot send 48 frames per second or faster. Give the
   decoder a rate hint, such as the DAW session rate, to recover the rates the code cannot name
-  when their nominal frame counts match. Otherwise the decoder follows the stream rate.
+  when their nominal frame counts match. A session at twice the code's count sends half-count
+  MTC, as Pro Tools does at 48, 50, 59.94 and 60: positions then run at the half rate with the
+  session's 1000/1001 factor and drop-frame counting, such as 29.97 for 59.94, and keep the
+  half-count labels. Otherwise the decoder follows the stream rate.
 - The decoder takes complete MIDI messages. It does not open ports, assemble SysEx from a raw
   byte stream, read user bits, MIDI Machine Control or MIDI Cueing, or estimate speed. The encoder
   builds bytes; the caller sends them at the interval it reports.

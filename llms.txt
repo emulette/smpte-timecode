@@ -78,7 +78,12 @@
   `Motion::{Forward, Reverse, Located}`.
 - Rate codes: 0 → `FPS_24`, 1 → `FPS_25`, 2 → `FPS_29_97_DF`, 3 → `FPS_30`.
   `set_rate_hint(Option<FrameRate>)`: while the hint has the same `nominal()` as the code's rate,
-  positions use the hint (recovers 23.976, 29.97 and 30 DF); otherwise the code's rate wins.
+  positions use the hint (recovers 23.976, 29.97 and 30 DF). A hint at twice the code's
+  `nominal()` (half-count MTC, as Pro Tools sends 48, 50, 59.94 and 60 sessions) gives the
+  code's count with the hint's `is_ntsc()` and `is_drop_frame()`: 59.94 → `FPS_29_97`,
+  59.94 DF → `FPS_29_97_DF`, 47.952 → `FPS_23_976`, 60 DF → `FPS_30_DF`, 48/50/60 →
+  24/25/30. Labels stay the half-count ones the stream carries; converting them to the session
+  rate is the caller's. Otherwise the code's rate wins.
 - `lock_state(now: Duration) -> LockState`: `Unlocked` before any position or after `reset()`;
   `Stale` when `now - at` of the last position exceeds the stale limit; otherwise
   `Locked(Motion)` of the last position.

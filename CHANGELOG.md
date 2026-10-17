@@ -7,6 +7,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 
 ## [Unreleased]
 
+### Fixed
+
+- `MtcDecoder` applies a rate hint at twice the rate code's frame count, as for the half-count
+  MTC Pro Tools sends from 48, 50, 59.94 and 60 sessions: positions run at the half rate with the
+  hint's 1000/1001 factor and drop-frame counting. A 59.94 session decoded as 30 fps, so its
+  positions ran 0.1% fast against real time: `01:00:00:00` was 3600 seconds instead of 3603.6.
+  59.94 DF, 47.952 and 60 DF hints give 29.97 DF, 23.976 and 30 DF. The positions keep the
+  half-count labels the stream carries.
+
 ## [0.1.0] - 2026-10-04
 
 ### Added

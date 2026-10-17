@@ -112,7 +112,12 @@ impl MtcDecoder {
     ///
     /// The two-bit rate code cannot tell 29.97 from 30, 23.976 from 24, or mark 30 as drop-frame.
     /// While the hint has the same nominal frame count as the incoming code, positions use the
-    /// hint. When they differ, the stream wins, because reading its frames at another count would
+    /// hint. A hint at twice the code's count is a session that sends half-count MTC, as Pro Tools
+    /// sends 48, 50, 59.94 and 60 sessions with the codes of 24, 25 and 30: positions then use the
+    /// half rate with the hint's 1000/1001 factor and drop-frame counting, such as 29.97 for
+    /// 59.94, 29.97 DF for 59.94 DF, 23.976 for 47.952 and 30 DF for 60 DF. They keep the
+    /// half-count labels the stream carries; converting them to labels at the session rate is the
+    /// caller's. Otherwise the stream wins, because reading its frames at another count would
     /// shift positions or reject frame numbers the hint cannot hold.
     pub const fn set_rate_hint(&mut self, hint: Option<FrameRate>) {
         self.rate_hint = hint;
@@ -251,10 +256,10 @@ impl MtcDecoder {
 
     fn timecode(&self, fields: Fields, code: u8) -> Result<Timecode, MtcError> {
         let stream = stream_rate(code);
-        let rate = match self.rate_hint {
-            Some(hint) if hint.nominal() == stream.nominal() => hint,
-            _ => stream,
-        };
+        let rate = self
+            .rate_hint
+            .and_then(|hint| hinted_rate(hint, stream))
+            .unwrap_or(stream);
         Timecode::from_fields(fields, rate).map_err(MtcError::InvalidTimecode)
     }
 
@@ -271,6 +276,19 @@ impl MtcDecoder {
         self.received = 0;
         self.last_piece = None;
         self.direction = None;
+    }
+}
+
+/// The rate positions of a `stream` code use under `hint`: the hint when it counts the stream's
+/// frames, or for a hint at twice that count, the stream's count with the hint's 1000/1001 factor
+/// and drop-frame counting. `None` when the hint is another session's.
+fn hinted_rate(hint: FrameRate, stream: FrameRate) -> Option<FrameRate> {
+    if hint.nominal() == stream.nominal() {
+        Some(hint)
+    } else if u16::from(hint.nominal()) == 2 * u16::from(stream.nominal()) {
+        FrameRate::new(stream.nominal(), hint.is_ntsc(), hint.is_drop_frame()).ok()
+    } else {
+        None
     }
 }
 

@@ -2,7 +2,9 @@
 
 use core::time::Duration;
 
-use smpte_timecode::{FrameRate, LockState, Motion, MtcDecoder, MtcError, MtcEvent, TimecodeError};
+use smpte_timecode::{
+    FrameRate, LockState, Motion, MtcDecoder, MtcError, MtcEvent, Ratio, TimecodeError,
+};
 
 /// The eight quarter-frame data nibbles for a position and rate code.
 fn pieces(hours: u8, minutes: u8, seconds: u8, frames: u8, code: u8) -> [u8; 8] {
@@ -451,6 +453,54 @@ fn a_rate_hint_refines_what_the_rate_code_cannot_express() {
 }
 
 #[test]
+fn a_rate_hint_at_twice_the_code_count_gives_the_half_rate() {
+    // Sessions at 48 frames per second and faster send half-count MTC. The positions keep the
+    // labels the stream carries, at the half rate with the hint's 1000/1001 factor and counting.
+    let cases = [
+        (FrameRate::FPS_59_94, 3, FrameRate::FPS_29_97, "01:00:00:12"),
+        (
+            FrameRate::FPS_59_94_DF,
+            2,
+            FrameRate::FPS_29_97_DF,
+            "01:00:00;12",
+        ),
+        (
+            FrameRate::FPS_59_94_DF,
+            3,
+            FrameRate::FPS_29_97_DF,
+            "01:00:00;12",
+        ),
+        (
+            FrameRate::FPS_47_952,
+            0,
+            FrameRate::FPS_23_976,
+            "01:00:00:12",
+        ),
+        (FrameRate::FPS_60_DF, 3, FrameRate::FPS_30_DF, "01:00:00;12"),
+        (FrameRate::FPS_48, 0, FrameRate::FPS_24, "01:00:00:12"),
+        (FrameRate::FPS_50, 1, FrameRate::FPS_25, "01:00:00:12"),
+        (FrameRate::FPS_60, 3, FrameRate::FPS_30, "01:00:00:12"),
+    ];
+    for (hint, code, rate, expected) in cases {
+        let mut source = Source::new();
+        source.decoder.set_rate_hint(Some(hint));
+        let events = source.events(pieces(1, 0, 0, 10, code), 0..8);
+        assert_eq!(events[0].timecode.rate(), rate, "{hint:?}");
+        assert_eq!(events[0].timecode.to_string(), expected, "{hint:?}");
+    }
+
+    // A 59.94 session's hour runs 1000/1001 slower than its labels count.
+    let mut source = Source::new();
+    source.decoder.set_rate_hint(Some(FrameRate::FPS_59_94));
+    let located = source.feed(&full_frame(1, 0, 0, 0, 3)).unwrap().unwrap();
+    assert_eq!(located.timecode.rate(), FrameRate::FPS_29_97);
+    assert_eq!(
+        located.timecode.to_seconds(),
+        Ratio::new(18_018, 5).unwrap()
+    );
+}
+
+#[test]
 fn the_stream_rate_wins_when_the_hint_counts_different_frames() {
     let mut source = Source::new();
     source.decoder.set_rate_hint(Some(FrameRate::FPS_24));
@@ -471,6 +521,17 @@ fn the_stream_rate_wins_when_the_hint_counts_different_frames() {
     source.decoder.set_rate_hint(Some(FrameRate::FPS_25));
     let located = source.feed(&full_frame(1, 2, 3, 4, 2)).unwrap().unwrap();
     assert_eq!(located.timecode.rate(), FrameRate::FPS_29_97_DF);
+
+    // Twice another code's count, or four times the code's, is not the stream's session rate.
+    for (hint, code, rate) in [
+        (FrameRate::FPS_48, 1, FrameRate::FPS_25),
+        (FrameRate::FPS_100, 1, FrameRate::FPS_25),
+        (FrameRate::FPS_119_88, 3, FrameRate::FPS_30),
+    ] {
+        source.decoder.set_rate_hint(Some(hint));
+        let located = source.feed(&full_frame(1, 2, 3, 4, code)).unwrap().unwrap();
+        assert_eq!(located.timecode.rate(), rate, "{hint:?}");
+    }
 
     source.decoder.set_rate_hint(None);
     assert_eq!(source.forward(pieces(1, 0, 0, 10, 3))[0], "01:00:00:12");
