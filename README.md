@@ -21,7 +21,7 @@ version is 1.85.
 
 ```toml
 [dependencies]
-smpte-timecode = "0.1.0"
+smpte-timecode = "0.1.1"
 ```
 
 ## Example

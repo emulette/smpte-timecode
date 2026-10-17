@@ -5,6 +5,6 @@ edition = "2024"
 publish = false
 
 [dependencies]
-smpte-timecode = { version = "=0.1.0", path = "../../target/package/smpte-timecode-0.1.0" }
+smpte-timecode = { version = "=0.1.1", path = "../../target/package/smpte-timecode-0.1.1" }
 
 [workspace]

@@ -7,6 +7,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-18
+
 ### Fixed
 
 - `MtcDecoder` applies a rate hint at twice the rate code's frame count, as for the half-count
@@ -33,5 +35,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Rel
 - `MtcEncoder`: forward and reverse quarter-frame streams, full-frame messages and the exact
   quarter-frame interval.
 
-[Unreleased]: https://github.com/emulette/smpte-timecode/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/emulette/smpte-timecode/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/emulette/smpte-timecode/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/emulette/smpte-timecode/releases/tag/v0.1.0
